@@ -23,17 +23,17 @@ SURROGATE_PATH = os.path.join("xgboost_multi_output_model",
 # 1. Load data and surrogate bundle
 # ----------------------------------------------------------------------
 
-# Load experimental data (to get discrete levels for inputs + stats)
+
 df = pd.read_csv(DATA_PATH)
 
-# Drop unused / unwanted columns from raw data
+
 columns_to_drop = [
     'Sl No. (Image)',
     'Unnamed: 6',
     'OC at Entry',
     'OC at Exit',
     'MRR',
-    'Taper(degree)',  # keep taper out of modeling; we recompute from Den/Dex
+    'Taper(degree)', 
 ]
 df = df.drop(columns=columns_to_drop, errors='ignore')
 
@@ -49,11 +49,11 @@ scaler_y = bundle["scaler_y"]
 input_features = bundle["input_features"]
 output_features = bundle["output_features"]
 
-# Sanity check: required outputs must exist
+
 assert 'Entry dia' in output_features and 'Exit dia' in output_features, \
     "Surrogate bundle must contain Entry dia and Exit dia models."
 
-# Standard deviations of targets for normalization (from data)
+
 den_std = float(df['Entry dia'].std(ddof=1))
 dex_std = float(df['Exit dia'].std(ddof=1))
 
@@ -71,7 +71,7 @@ def get_default_levels(df: pd.DataFrame):
 
 DEFAULT_LEVELS = get_default_levels(df)
 
-# Hole depth (thickness) used for taper calculation (use your actual plate thickness)
+
 HOLE_DEPTH = 700.0  # µm
 
 def compute_taper_angle(entry_d: float, exit_d: float, depth: float = HOLE_DEPTH) -> float:
@@ -272,10 +272,7 @@ def inverse_design_entry_only(
 # ----------------------------------------------------------------------
 
 def lookup_experimental_match(row: pd.Series, df_exp: pd.DataFrame) -> pd.Series | None:
-    """
-    Find the matching experimental row in Final.csv for a given setting,
-    if it exists.
-    """
+  
     mask = (
         (df_exp['Capacitance (pF)'] == row['Capacitance (pF)']) &
         (df_exp['Voltage (V)'] == row['Voltage (V)']) &
@@ -491,24 +488,19 @@ def plot_local_taper_heatmap(df_neighbors: pd.DataFrame, base_row: pd.Series):
     plt.savefig(os.path.join(PLOT_DIR, "scatter_local_taper.png"), dpi=600)
     plt.close()
 
-# ----------------------------------------------------------------------
-# 9. Main: example workflow
-# ----------------------------------------------------------------------
+# MAIN
 
 if __name__ == "__main__":
-    # Evaluate full design space once
+
     df_all = evaluate_full_design_space()
     print_objective_definition()
 
-
-    # 1) Global process scatter (Voltage vs Cap, coloured by taper)
     scatter_process_vs_taper(df_all)
 
-    # 2) Inverse design for multiple target geometries (taken from Final.csv)
     targets = [
-        (590.36, 588.94),  # T1: experimental validation
-        (580.0, 540.0),    # T2: designed
-        (620.0, 580.0),    # T3: designed
+        (590.36, 588.94),  
+        (580.0, 540.0),    
+        (620.0, 580.0),   
     ]
 
     all_inv_results = []
@@ -519,21 +511,20 @@ if __name__ == "__main__":
             target_entry=target_entry,
             target_exit=target_exit,
             df_all=df_all,
-            taper_max=None,      # or e.g. 3.0 if you want a hard taper limit
-            taper_weight=2,    # chosen trade-off weight
+            taper_max=None,      
+            taper_weight=2,    
             top_k=5,
             verbose=(i == 0),
         )
         print(inv_results)
         all_inv_results.append(inv_results)
 
-        # Show best solution on geometry cloud
         scatter_geometry_with_inverse_points(
             df_all, inv_results.head(1),
             tag=f"{int(target_entry)}_{int(target_exit)}"
         )
         scatter_geometry_cloud(df_all, tag="full_space")
-        # Also print matching experimental measurements (if available)
+        
         best_row = inv_results.iloc[0]
         exp_match = lookup_experimental_match(best_row, df)
         if exp_match is not None:
@@ -543,11 +534,10 @@ if __name__ == "__main__":
         else:
             print("\nNo exact experimental match found for this setting in Final.csv.")
 
-    # 3) Local sensitivity around the best inverse-designed setting
-    # choose which target you want the neighbourhood for
+
     
     # index 1  -> targets[1] = (580.0, 540.0)
-    base_row = all_inv_results[1].iloc[0]   # use T2 (580, 540)
+    base_row = all_inv_results[1].iloc[0]   
     
     print("\n=== Local sensitivity around best inverse-designed setting (580, 540) ===")
     print(base_row)
@@ -559,8 +549,7 @@ if __name__ == "__main__":
     plot_local_taper_heatmap(df_neighbors, base_row)
 
 
-    # 4) Save inverse-design results and lambda sweep to CSVs
-    # Flatten all_inv_results into separate CSVs per target
+
     for (target_entry, target_exit), inv_df in zip(targets, all_inv_results):
         fname = f"inverse_results_target_{int(target_entry)}_{int(target_exit)}.csv"
         fpath = os.path.join(RESULTS_DIR, fname)
@@ -573,19 +562,19 @@ if __name__ == "__main__":
     sweep_df.to_csv(sweep_path, index=False)
     print(f"Saved lambda sweep to {sweep_path}")
 
-        # 5) Generate 10 candidate target geometries (Entry, Exit) for team discussion
+        
 
-    # Use Den/Dex range from data
+
     den_min, den_max = float(df['Entry dia'].min()), float(df['Entry dia'].max())
     dex_min, dex_max = float(df['Exit dia'].min()), float(df['Exit dia'].max())
 
     candidate_targets = []
-    # Three current ones
+
     candidate_targets.append({"Target_ID": "T1", "Target_Entry": 580.0, "Target_Exit": 540.0})
     candidate_targets.append({"Target_ID": "T2", "Target_Entry": 600.0, "Target_Exit": 560.0})
     candidate_targets.append({"Target_ID": "T3", "Target_Entry": 620.0, "Target_Exit": 580.0})
 
-    # Seven more evenly spaced between min and max Den/Dex
+
     for k in range(4, 11):
         alpha = (k - 4) / 6.0
         den = den_min + alpha * (den_max - den_min)
@@ -609,18 +598,18 @@ if __name__ == "__main__":
         df_all=df_all,
         taper_max=None,
         taper_weight=0.0,
-        top_k=5,          # or larger
+        top_k=5,          
         verbose=True,
     )
     
-    # Sort by taper and save everything to CSV
+
     inv_entry_only_sorted = inv_entry_only.sort_values("ObjValue", ascending=True)
     
     entry_only_path = os.path.join(RESULTS_DIR, f"entry_only_inverse_{int(target_entry_single)}.csv")
     inv_entry_only_sorted.to_csv(entry_only_path, index=False)
     print(f"\nSaved entry-only inverse-design (sorted by taper) to {entry_only_path}")
     
-    # Plot: Entry vs Taper for entry-only inverse design
+
     plt.figure(figsize=(6, 5))
     plt.scatter(
         inv_entry_only_sorted["Pred_Entry"],
@@ -637,7 +626,7 @@ if __name__ == "__main__":
     plt.tight_layout()
     
     plot_path = os.path.join(PLOT_DIR, f"entry_only_inverse_{int(target_entry_single)}.png")
-    plt.savefig(plot_path, dpi=600)   # high-res image [web:44]
+    plt.savefig(plot_path, dpi=600)   
     plt.close()
     
     print(f"Saved entry-only inverse-design plot to {plot_path}")
